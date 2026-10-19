@@ -2,12 +2,12 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 st.set_page_config(
-    page_title="Oggy & Những Chú Gián: Chạy Trốn", layout="centered"
+    page_title="Subway Surfers: Oggy & Gián", layout="centered"
 )
 
-st.title("🪳 Game: Gián Né Mèo Oggy!")
+st.title("🏃‍♂️ Subway Surfers: Phiên Bản Chú Gián Né Oggy")
 st.write(
-    "Bạn là **chú gián** siêu tốc, hãy dùng phím **Mũi tên Trái / Phải** hoặc **A / D** để né Mèo Oggy và nhặt đồ ăn vặt nhé!"
+    "Dùng phím **Mũi tên Trái / Phải** (hoặc **A / D**) để đổi 3 làn đường và né chướng ngại vật!"
 )
 
 game_html = """
@@ -17,117 +17,143 @@ game_html = """
     <style>
         body {
             margin: 0;
-            background: #1a1a1a;
+            background: #121212;
             display: flex;
             justify-content: center;
             align-items: center;
-            font-family: 'Comic Sans MS', cursive, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             color: white;
+            overflow: hidden;
+        }
+        #gameContainer {
+            position: relative;
+            text-align: center;
         }
         #gameCanvas {
-            border: 4px solid #ffcc00;
-            background: #2b2b2b;
-            box-shadow: 0 0 25px rgba(255, 204, 0, 0.4);
+            border: 4px solid #ff9800;
+            background: #2c3e50;
+            box-shadow: 0 0 30px rgba(255, 152, 0, 0.6);
+            display: block;
         }
         #restartBtn {
             display: none;
             position: absolute;
-            top: 60%;
-            padding: 12px 28px;
-            font-size: 18px;
-            background-color: #ff4757;
+            top: 55%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 14px 30px;
+            font-size: 20px;
+            background-color: #e74c3c;
             color: white;
             border: none;
-            border-radius: 10px;
+            border-radius: 12px;
             cursor: pointer;
             font-weight: bold;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.6);
+            z-index: 10;
         }
         #restartBtn:hover {
-            background-color: #ff6b81;
+            background-color: #c0392b;
         }
     </style>
 </head>
 <body>
 
-    <canvas id="gameCanvas" width="400" height="500"></canvas>
-    <button id="restartBtn" onclick="resetGame()">Chơi Lại Nào!</button>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="450" height="600"></canvas>
+        <button id="restartBtn" onclick="resetGame()">Chơi Lại</button>
+    </div>
 
     <script>
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
         const restartBtn = document.getElementById("restartBtn");
 
-        // Hình ảnh nhân vật (Icon minh họa dễ thương)
-        const roachImg = new Image();
-        roachImg.src = 'https://cdn-icons-png.flaticon.com/512/2821/2821808.png'; // Biểu tượng chú gián/bọ
-
-        const oggyImg = new Image();
-        oggyImg.src = 'https://cdn-icons-png.flaticon.com/512/616/616430.png'; // Biểu tượng mèo
-
-        // Nhân vật chính: Chú Gián
-        const player = {
-            x: 180,
-            y: 420,
-            width: 40,
-            height: 40,
-            speed: 8
+        // Tọa độ 3 làn đường (Lane 0: Trái, Lane 1: Giữa, Lane 2: Phải)
+        const lanes = [110, 225, 340]; 
+        
+        // Nhân vật Gián (Chạy phía trước)
+        let player = {
+            laneIndex: 1, // Bắt đầu ở làn giữa
+            y: 480,
+            width: 50,
+            height: 50,
+            targetX: 225,
+            x: 225
         };
 
         let obstacles = [];
         let score = 0;
         let gameOver = false;
         let frameCount = 0;
+        let gameSpeed = 5;
 
-        const keys = { left: false, right: false };
+        // Hình ảnh sprite (Sử dụng URL sprite nhân vật hoạt hình rõ nét)
+        const roachSprite = new Image();
+        roachSprite.src = 'https://cdn-icons-png.flaticon.com/512/3468/3468377.png'; // Model nhân vật gián dạng chi tiết
+
+        const trapSprite = new Image();
+        trapSprite.src = 'https://cdn-icons-png.flaticon.com/512/2936/2936735.png'; // Model bẫy chuột/chướng ngại vật
+
+        // Điều khiển bàn phím (3 làn: Trái / Phải)
         document.addEventListener("keydown", (e) => {
-            if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") keys.left = true;
-            if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") keys.right = true;
-        });
-        document.addEventListener("keyup", (e) => {
-            if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") keys.left = false;
-            if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") keys.right = false;
+            if (gameOver) return;
+            if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") {
+                if (player.laneIndex > 0) {
+                    player.laneIndex--;
+                }
+            }
+            if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") {
+                if (player.laneIndex < 2) {
+                    player.laneIndex++;
+                }
+            }
         });
 
-        function spawnOggyObstacle() {
-            const size = 45;
-            const x = Math.random() * (canvas.width - size);
+        function spawnObstacle() {
+            let randomLane = Math.floor(Math.random() * 3);
             obstacles.push({
-                x: x,
-                y: -50,
-                width: size,
-                height: size,
-                speed: 4 + Math.floor(score / 4) // Tốc độ Mèo Oggy tăng dần theo điểm
+                laneIndex: randomLane,
+                y: -80,
+                width: 55,
+                height: 55,
+                speed: gameSpeed
             });
         }
 
         function update() {
             if (gameOver) return;
 
-            // Di chuyển gián
-            if (keys.left && player.x > 0) player.x -= player.speed;
-            if (keys.right && player.x + player.width < canvas.width) player.x += player.speed;
+            // Hiệu ứng mượt mà khi chuyển làn (Lerp)
+            player.targetX = lanes[player.laneIndex];
+            player.x += (player.targetX - player.x) * 0.2;
 
-            // Xuất hiện chướng ngại vật (Mèo Oggy lao xuống)
+            // Tăng độ khó dần theo điểm
+            gameSpeed = 5 + Math.floor(score / 10) * 0.5;
+
+            // Sinh chướng ngại vật theo thời gian
             frameCount++;
-            if (frameCount % 40 === 0) spawnOggyObstacle();
+            if (frameCount % 50 === 0) {
+                spawnObstacle();
+            }
 
+            // Cập nhật vị trí chướng ngại vật chạy từ trên xuống (giả lập 3D đường chạy)
             for (let i = 0; i < obstacles.length; i++) {
                 let obs = obstacles[i];
                 obs.y += obs.speed;
 
-                // Kiểm tra va chạm (Gián đụng Mèo Oggy là thua)
+                // Kiểm tra va chạm (Cùng làn và khoảng cách y trùng nhau)
+                let obsX = lanes[obs.laneIndex];
                 if (
-                    player.x < obs.x + obs.width - 8 &&
-                    player.x + player.width - 8 > obs.x &&
-                    player.y < obs.y + obs.height - 8 &&
-                    player.y + player.height - 8 > obs.y
+                    obs.laneIndex === player.laneIndex &&
+                    player.y < obs.y + obs.height - 15 &&
+                    player.y + player.height > obs.y + 15
                 ) {
                     gameOver = true;
                     restartBtn.style.display = "block";
                 }
 
-                // Né thành công -> cộng điểm
+                // Vượt qua chướng ngại vật thành công
                 if (obs.y > canvas.height) {
                     obstacles.splice(i, 1);
                     score += 1;
@@ -139,40 +165,65 @@ game_html = """
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Vẽ sàn bếp (vạch kẻ sọc trang trí)
-            ctx.strokeStyle = '#383838';
-            ctx.lineWidth = 2;
+            // 1. Vẽ nền đường tàu / sàn bếp phong cách 3D phối cảnh (Perspective)
+            // Màu nền sàn
+            ctx.fillStyle = "#34495e";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Vẽ 3 làn đường dạng hình thang (tạo chiều sâu 3D như Subway Surfers)
+            ctx.fillStyle = "#2c3e50";
             ctx.beginPath();
-            ctx.moveTo(133, 0); ctx.lineTo(133, canvas.height);
-            ctx.moveTo(266, 0); ctx.lineTo(266, canvas.height);
+            ctx.moveTo(150, 0); ctx.lineTo(300, 0); ctx.lineTo(400, canvas.height); ctx.lineTo(50, canvas.height);
+            ctx.fill();
+
+            // Các vạch kẻ phân làn chạy dọc tạo cảm giác chuyển động
+            ctx.strokeStyle = "#f1c40f";
+            ctx.lineWidth = 4;
+            ctx.setLineDash([20, 20]);
+            
+            // Đường phân cách 1
+            ctx.beginPath();
+            ctx.moveTo(200, 0); ctx.lineTo(170, canvas.height);
             ctx.stroke();
 
-            // Vẽ nhân vật (Gián)
-            ctx.drawImage(roachImg, player.x, player.y, player.width, player.height);
+            // Đường phân cách 2
+            ctx.beginPath();
+            ctx.moveTo(250, 0); ctx.lineTo(280, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([]); // Reset line dash
 
-            // Vẽ chướng ngại vật (Mèo Oggy)
+            // 2. Vẽ Chướng ngại vật (Bẫy chuột / Đồ vật)
             for (let obs of obstacles) {
-                ctx.drawImage(oggyImg, obs.x, obs.y, obs.width, obs.height);
+                let drawX = lanes[obs.laneIndex] - obs.width / 2;
+                ctx.drawImage(trapSprite, drawX, obs.y, obs.width, obs.height);
             }
 
-            // Hiển thị điểm số
-            ctx.fillStyle = "#ffcc00";
-            ctx.font = "bold 22px 'Comic Sans MS', cursive";
-            ctx.fillText("Điểm Né Mèo: " + score, 15, 35);
+            // 3. Vẽ Nhân vật Chú Gián
+            ctx.drawImage(roachSprite, player.x - player.width / 2, player.y, player.width, player.height);
 
-            // Giao diện Game Over
+            // 4. Hiển thị Giao diện Điểm số góc trên
+            ctx.fillStyle = "#f1c40f";
+            ctx.font = "bold 24px Arial";
+            ctx.fillText("ĐIỂM: " + score, 20, 35);
+
+            ctx.fillStyle = "#fff";
+            ctx.font = "16px Arial";
+            ctx.fillText("Tốc độ: " + gameSpeed.toFixed(1) + "x", 20, 65);
+
+            // 5. Màn hình Game Over
             if (gameOver) {
-                ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+                ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                ctx.fillStyle = "#ff4757";
-                ctx.font = "bold 28px 'Comic Sans MS', cursive";
+                ctx.fillStyle = "#e74c3c";
+                ctx.font = "bold 30px Arial";
                 ctx.textAlign = "center";
-                ctx.fillText("ÔI KHÔNG! BẠN ĐÃ BỊ OGGY TÓM!", canvas.width / 2, canvas.height / 2 - 30);
+                ctx.fillText("BẠN ĐÃ BỊ TÓM!", canvas.width / 2, canvas.height / 2 - 40);
 
                 ctx.fillStyle = "white";
-                ctx.font = "20px 'Comic Sans MS', cursive";
-                ctx.fillText("Tổng điểm trốn chạy: " + score, canvas.width / 2, canvas.height / 2 + 15);
+                ctx.font = "20px Arial";
+                ctx.fillText("Tổng điểm né tránh: " + score, canvas.width / 2, canvas.height / 2 + 10);
+                ctx.textAlign = "left"; // Reset align
             }
         }
 
@@ -183,11 +234,12 @@ game_html = """
         }
 
         function resetGame() {
-            player.x = 180;
+            player.laneIndex = 1;
+            player.x = lanes[1];
             obstacles = [];
             score = 0;
+            gameSpeed = 5;
             gameOver = false;
-            frameCount = 0;
             restartBtn.style.display = "none";
         }
 
@@ -197,4 +249,4 @@ game_html = """
 </html>
 """
 
-components.html(game_html, height=530)
+components.html(game_html, height=620)
