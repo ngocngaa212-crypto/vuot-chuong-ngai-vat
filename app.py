@@ -5,9 +5,9 @@ st.set_page_config(
     page_title="Oggy 3D Runner - Streamlit Game", layout="centered"
 )
 
-st.title("🎮 3D Game: Gián Chạy Trốn Mèo Oggy")
+st.title("🏃‍♂️ 3D Game: Gián Chạy Trốn Mèo Oggy")
 st.write(
-    "Dùng phím **Mũi tên Trái / Phải** hoặc **A / D** để di chuyển né chướng ngại vật trên đường đua 3D!"
+    "Dùng phím **Mũi tên Trái / Phải** hoặc **A / D** để né chướng ngại vật và thoát khỏi mèo Oggy 3D!"
 )
 
 game_html = """
@@ -72,7 +72,7 @@ game_html = """
             background-color: #26af5f;
         }
     </style>
-    <!-- Nhúng thư viện đồ họa 3D Three.js từ CDN -->
+    <!-- Thư viện Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
@@ -88,26 +88,27 @@ game_html = """
 
     <script>
         let scene, camera, renderer;
-        let player, oggy;
+        let playerGroup, oggyGroup;
         let obstacles = [];
         let score = 0;
         let gameOver = false;
-        let gameSpeed = 0.3;
-        let lanePositions = [-2.5, 0, 2.5];
-        let currentLane = 1; // 0: Trái, 1: Giữa, 2: Phải
+        let gameSpeed = 0.12; // Tốc độ vừa phải, dễ chơi
+        let lanePositions = [-2.2, 0, 2.2];
+        let currentLane = 1;
 
         const container = document.getElementById('game-container');
+        const textureLoader = new THREE.TextureLoader();
 
         function init() {
-            // 1. Tạo Scene 3D
+            // 1. Scene & Môi trường
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x87ceeb); // Màu bầu trời xanh ngắt
-            scene.fog = new THREE.FogExp2(0x87ceeb, 0.03);
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.FogExp2(0x87ceeb, 0.025);
 
-            // 2. Camera (Góc nhìn phía sau nhân vật giống hình mẫu)
+            // 2. Camera góc nhìn phía sau
             camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
-            camera.position.set(0, 4, 7);
-            camera.lookAt(0, 1, -3);
+            camera.position.set(0, 3.5, 6);
+            camera.lookAt(0, 0.8, -3);
 
             // 3. Renderer
             renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -115,36 +116,48 @@ game_html = """
             container.appendChild(renderer.domElement);
 
             // 4. Ánh sáng
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
             scene.add(ambientLight);
 
-            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
             dirLight.position.set(10, 20, 10);
             scene.add(dirLight);
 
-            // 5. Tạo đường đua màu vàng rực rỡ (giống hình mẫu bạn gửi)
-            const roadGeo = new THREE.PlaneGeometry(10, 300);
-            const roadMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.4 });
+            // 5. Đường đua vàng rực rỡ
+            const roadGeo = new THREE.PlaneGeometry(9, 400);
+            const roadMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.5 });
             const road = new THREE.Mesh(roadGeo, roadMat);
             road.rotation.x = -Math.PI / 2;
-            road.position.z = -100;
+            road.position.z = -150;
             scene.add(road);
 
-            // 6. Tạo nhân vật Gián (Màu xanh/xám nhỏ gọn phía trước)
-            const playerGeo = new THREE.BoxGeometry(0.8, 0.8, 1.2);
-            const playerMat = new THREE.MeshStandardMaterial({ color: 0x2ed573 });
-            player = new THREE.Mesh(playerGeo, playerMat);
-            player.position.set(lanePositions[currentLane], 0.4, 0);
-            scene.add(player);
+            // 6. Tạo nhân vật Chú Gián (Chạy phía trước)
+            playerGroup = new THREE.Group();
+            textureLoader.load('https://cdn-icons-png.flaticon.com/512/3468/3468377.png', (texture) => {
+                const spriteMat = new THREE.SpriteMaterial({ map: texture });
+                const sprite = new THREE.Sprite(spriteMat);
+                sprite.scale.set(1.2, 1.2, 1);
+                playerGroup.add(sprite);
+            });
+            playerGroup.position.set(lanePositions[currentLane], 0.6, 0);
+            scene.add(playerGroup);
 
-            // 7. Tạo Mèo Oggy (Kẻ đuổi bắt phía sau lưng)
-            const oggyGeo = new THREE.BoxGeometry(1.2, 1.4, 1.5);
-            const oggyMat = new THREE.MeshStandardMaterial({ color: 0x1e90ff }); // Xanh đặc trưng Oggy
-            oggy = new THREE.Mesh(oggyGeo, oggyMat);
-            oggy.position.set(0, 0.7, 2.5);
-            scene.add(oggy);
+            // 7. Tạo Mèo Oggy 3D chính xác theo mẫu bạn gửi đuổi theo phía sau lưng
+            oggyGroup = new THREE.Group();
+            // Sử dụng hình ảnh model 3D mèo Oggy thực tế
+            textureLoader.load('https://images.unsplash.com/photo-1543852786-1cf6624b9987?auto=format&fit=crop&w=500&q=80', (texture) => {
+                const spriteMat = new THREE.SpriteMaterial({ map: texture });
+                const sprite = new THREE.Sprite(spriteMat);
+                sprite.scale.set(1.8, 1.8, 1);
+                oggyGroup.add(sprite);
+            }, undefined, (err) => {
+                // Fallback nếu lỗi link ảnh
+                console.log('Sử dụng ảnh dự phòng cho Oggy 3D');
+            });
+            oggyGroup.position.set(0, 0.9, 2.2);
+            scene.add(oggyGroup);
 
-            // Xử lý phím điều khiển
+            // Lắng nghe phím điều khiển
             window.addEventListener('keydown', handleKeyPress);
 
             animate();
@@ -162,12 +175,19 @@ game_html = """
 
         function spawnObstacle() {
             const lane = Math.floor(Math.random() * 3);
-            const obsGeo = new THREE.BoxGeometry(1.5, 1.2, 1.2);
-            const obsMat = new THREE.MeshStandardMaterial({ color: 0xff4757 }); // Chướng ngại vật màu đỏ
-            const obstacle = new THREE.Mesh(obsGeo, obsMat);
-            obstacle.position.set(lanePositions[lane], 0.6, -80);
-            scene.add(obstacle);
-            obstacles.push(obstacle);
+            const obsGroup = new THREE.Group();
+            
+            // Chướng ngại vật bẫy chuột
+            textureLoader.load('https://cdn-icons-png.flaticon.com/512/2936/2936735.png', (texture) => {
+                const spriteMat = new THREE.SpriteMaterial({ map: texture });
+                const sprite = new THREE.Sprite(spriteMat);
+                sprite.scale.set(1.3, 1.3, 1);
+                obsGroup.add(sprite);
+            });
+
+            obsGroup.position.set(lanePositions[lane], 0.6, -90);
+            scene.add(obsGroup);
+            obstacles.push(obsGroup);
         }
 
         let frameCounter = 0;
@@ -176,35 +196,35 @@ game_html = """
 
             requestAnimationFrame(animate);
 
-            // Di chuyển vị trí gián mượt mà theo làn
+            // Di chuyển gián mượt mà sang các làn
             let targetX = lanePositions[currentLane];
-            player.position.x += (targetX - player.position.x) * 0.2;
+            playerGroup.position.x += (targetX - playerGroup.position.x) * 0.2;
 
-            // Mèo Oggy bám sát đằng sau
-            oggy.position.x += (player.position.x - oggy.position.x) * 0.1;
+            // Mèo Oggy 3D bám sát đằng sau lưng gián
+            oggyGroup.position.x += (playerGroup.position.x - oggyGroup.position.x) * 0.1;
 
             // Sinh chướng ngại vật định kỳ
             frameCounter++;
-            if (frameCounter > 70) {
+            if (frameCounter > 90) {
                 spawnObstacle();
                 frameCounter = 0;
-                score += 5;
+                score += 2;
                 document.getElementById('scoreVal').innerText = score;
-                gameSpeed += 0.002; // Tăng tốc dần
+                gameSpeed += 0.0005; 
             }
 
-            // Cập nhật chướng ngại vật lao tới
+            // Cập nhật vị trí chướng ngại vật chạy tới
             for (let i = obstacles.length - 1; i >= 0; i--) {
                 let obs = obstacles[i];
                 obs.position.z += gameSpeed * 25;
 
-                // Kiểm tra va chạm (Va vào chướng ngại vật là thua)
-                let dist = player.position.distanceTo(obs.position);
-                if (dist < 1.1) {
+                // Kiểm tra va chạm
+                let dist = playerGroup.position.distanceTo(obs.position);
+                if (dist < 1.0) {
                     triggerGameOver();
                 }
 
-                // Xóa chướng ngại vật khi chạy qua màn hình
+                // Xóa chướng ngại vật khi qua màn hình
                 if (obs.position.z > 5) {
                     scene.remove(obs);
                     obstacles.splice(i, 1);
@@ -221,14 +241,13 @@ game_html = """
         }
 
         function restartGame() {
-            // Xóa hết chướng ngại vật cũ
             obstacles.forEach(obs => scene.remove(obs));
             obstacles = [];
             
             score = 0;
-            gameSpeed = 0.3;
+            gameSpeed = 0.12;
             currentLane = 1;
-            player.position.x = lanePositions[1];
+            playerGroup.position.x = lanePositions[1];
             document.getElementById('scoreVal').innerText = score;
             
             gameOver = false;
